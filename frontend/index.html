@@ -9,9 +9,12 @@
   // i18n-core RTL_LANGS is the runtime source of truth — keep this list in sync.
   try {
     var s = JSON.parse(localStorage.getItem('gym_state_v1') || '{}');
-    var l = s.lang || ((navigator.language || '').slice(0, 2) === 'ar' ? 'ar' : 'en');
+    var rtl = { ar: 1, he: 1 };
+    var nl = (navigator.language || '').slice(0, 2).toLowerCase();
+    if (nl === 'iw') nl = 'he';
+    var l = s.lang || (rtl[nl] ? nl : 'en');
     document.documentElement.lang = l;
-    document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.dir = rtl[l] ? 'rtl' : 'ltr';
   } catch (e) {}
 </script>
 <title>openGym</title>

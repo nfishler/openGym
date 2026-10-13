@@ -246,7 +246,7 @@ const clone = o => JSON.parse(JSON.stringify(o))
 // picks a language.
 const detectedLang = () => {
   try {
-    const base = (navigator.language || '').toLowerCase().split('-')[0]
+    const base = (navigator.language || '').toLowerCase().split('-')[0].replace(/^iw$/, 'he')
     if (RTL_LANGS.has(base)) return base
   } catch (e) { /* ignore */ }
   return 'en'
