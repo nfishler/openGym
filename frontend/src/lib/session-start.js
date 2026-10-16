@@ -3,7 +3,7 @@
 // to identical entries, or the two paths drift apart the first time a prescription rule changes.
 // Imports both history.js and progression.js (which itself imports history.js); nothing in
 // either imports this file, so there is no cycle.
-import { buildSets, applyIntensifierPlan, modeOf } from './history.js'
+import { buildSets, applyIntensifierPlan, modeOf, lastEntryFor } from './history.js'
 import { isWarmupRow } from './workout-model.js'
 import { nextPrescription, applyPrescription, defaultIncrement, weightIncrement, plannedOf } from './progression.js'
 import { dropGrid } from './plates.js'
@@ -16,6 +16,14 @@ import { dropGrid } from './plates.js'
  * this setting existed. A profile saved before it, or one that never chose, reads as 'plan'.
  */
 export const startsFromLast = st => st?.startFrom === 'last'
+
+/**
+ * fishlerhome deployment: planned exercises open exactly at their last session (see
+ * buildPlannedEntry). On in every build; off under vitest so the upstream suite keeps testing the
+ * upstream prescription path — tests of this behaviour turn it on with setPrefillFromLast(true).
+ */
+let prefillFromLast = import.meta.env?.MODE !== 'test'
+export const setPrefillFromLast = on => { prefillFromLast = !!on }
 
 /**
  * One planned exercise, built the way a session builds it: the prescription, the rows it opens
@@ -32,6 +40,29 @@ export function buildPlannedEntry(st, cfg, routine, { noProg = false } = {}) {
   // plates exist), not the unit default; a timed exercise's `inc` is seconds, so it keeps the
   // default for its optional load.
   const step = modeOf(cfg) === 'reps' ? weightIncrement(cfg, st.unit) : defaultIncrement(cfg.id, st.unit)
+  // fishlerhome: a planned exercise with a last session opens exactly at it: the same number of
+  // work sets, each at the weight and reps (seconds, minutes) logged then. The progression
+  // policy still runs, and `plan` is kept so the card shows its recommendation, but it no longer
+  // writes into the rows or today's target. No last session (or a deload/rehab routine built
+  // with noProg) keeps the upstream behaviour below.
+  const last = noProg || !prefillFromLast ? null : lastEntryFor(st, cfg.id, routine?.id)
+  if (last && last.sets.length) {
+    const lastCfg = { ...cfg, sets: last.sets.length }
+    const rows = buildSets(st, lastCfg, { step, rid: routine?.id, preferLast: true })
+    const sets = applyIntensifierPlan(rows, lastCfg, dropGrid(st, cfg))
+    const work = rows.filter(s => !isWarmupRow(s))
+    const first = work[0] || {}
+    const target = { ...cfg, sets: work.length }
+    const mode = modeOf(cfg)
+    if (mode === 'reps') {
+      if (first.w != null) target.weight = first.w
+      if (first.r > 0) target.reps = first.r
+    } else if (mode === 'time') {
+      if (first.sec > 0) target.sec = first.sec
+      if (first.w != null) target.weight = first.w
+    }
+    return { target, plan, sets, planned: plannedOf(cfg), fromLast: true }
+  }
   const planReps = !startsFromLast(st)
   const rows = applyPrescription(buildSets(st, cfg, { step, rid: routine?.id, useTarget: plan.kind === 'off', planReps }), plan, step)
   const sets = applyIntensifierPlan(rows, cfg, dropGrid(st, cfg))
